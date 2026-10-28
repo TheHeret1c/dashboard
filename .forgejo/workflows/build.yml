@@ -1,12 +1,23 @@
 name: build
-on: [push]
+on:
+  push:
+    branches: [main]
 
 jobs:
   build:
     runs-on: docker
     steps:
       - uses: actions/checkout@v4
+
       - name: Установить Docker CLI
         run: apt-get update && apt-get install -y docker.io
-      - name: Собрать образ
-        run: docker build -t dashboard:ci .
+
+      - name: Войти в реестр
+        run: echo "${{ secrets.REGISTRY_TOKEN }}" | docker login 192.168.1.80:3000 -u theheret1c --password-stdin
+
+      - name: Собрать и отправить образ
+        run: |
+          IMAGE=192.168.1.80:3000/theheret1c/dashboard
+          docker build -t $IMAGE:latest -t $IMAGE:${{ github.sha }} .
+          docker push $IMAGE:latest
+          docker push $IMAGE:${{ github.sha }}
