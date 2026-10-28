@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <title>Дашборд</title>
+    <style>
+        /* стили: фон, шрифт, полоски заполнения */
+    </style>
+</head>
+<body>
+<h1>Сервер</h1>
+
+<div>CPU: <span id="cpu">-</span></div>
+<div>Память: <span id="mem">-</span></div>
+<div id="disks"></div>
+
+<script>
+    async function refresh() {
+        try {
+            const r = await fetch('/api/metrics');
+            const m = await r.json();
+            document.getElementById('cpu').textContent = m.cpu_percent.toFixed(1) + '%';
+            // память и диски заполни по такому же принципу
+            document.getElementById('mem').textContent = 'занято ' +
+                fmtGB(m.mem_used_bytes) + ' из ' + fmtGB(m.mem_total_bytes) + ', свободно ' + fmtGB(m.mem_total_bytes - m.mem_used_bytes);
+            renderDisks(m.disks);
+        } catch (e) {
+            document.getElementById('cpu').textContent = 'нет связи';
+        }
+    }
+
+    function fmtGB(bytes) {
+        return (bytes / 1024 / 1024 / 1024).toFixed(1) + 'ГБ'
+    }
+
+    function renderDisks(disks) {
+        const box = document.getElementById('disks');
+        box.replaceChildren();
+
+        for (const d of disks) {
+            if (d.total_bytes === 0) continue;
+            const used = d.total_bytes - d.available_bytes;
+
+            const row = document.createElement('div');
+            row.textContent = d.mount + ' занято ' + fmtGB(used) + ' из ' + fmtGB(d.total_bytes) + ', свободно ' + fmtGB(d.available_bytes);
+            box.appendChild(row);
+        }
+    }
+
+    refresh();
+    setInterval(refresh, 3000);
+</script>
+</body>
+</html>

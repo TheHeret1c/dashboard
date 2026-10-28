@@ -1,8 +1,9 @@
 use axum::{extract::State, routing::get, Json, Router};
 use serde::Serialize;
-use sysinfo::{Disk, Disks, System};
+use sysinfo::{Disks, System};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
+use axum::response::Html;
 
 
 #[derive(Serialize, Clone)]
@@ -29,6 +30,10 @@ async fn health() -> &'static str {
 async fn metrics(State(state): State<Shared>) -> Json<Metrics> {
     let m = state.read().unwrap().clone();
     Json(m)
+}
+
+async fn index() -> Html<&'static str> {
+    Html(include_str!("../static/index.html"))
 }
 
 #[tokio::main]
@@ -68,6 +73,7 @@ async fn main() {
     let app = Router::new()
         .route("/health", get(health))
         .route("/api/metrics", get(metrics))
+        .route("/", get(index))
         .with_state(shared.clone());
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
