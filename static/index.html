@@ -2,35 +2,98 @@
 <html lang="ru">
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Дашборд</title>
     <style>
-        /* стили: фон, шрифт, полоски заполнения */
+        :root {
+            --bg: #0f1419;
+            --card: #1a2129;
+            --text: #e6edf3;
+            --muted: #8b98a5;
+            --track: #2a343f;
+            --ok: #3fb950;
+            --warn: #d29922;
+            --bad: #f85149;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 24px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        }
+        h1 { margin: 0 0 20px; font-size: 1.5rem; }
+        .grid { display: grid; gap: 16px; max-width: 720px; }
+        .card { background: var(--card); border-radius: 12px; padding: 16px 20px; }
+        .card h2 {
+            margin: 0 0 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .row { margin-bottom: 14px; }
+        .row:last-child { margin-bottom: 0; }
+        .label {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 4px 12px;
+            margin-bottom: 6px;
+            font-size: 0.95rem;
+        }
+        .muted { color: var(--muted); }
+        .track { height: 10px; background: var(--track); border-radius: 5px; overflow: hidden; }
+        .fill {
+            height: 100%;
+            width: 0;
+            border-radius: 5px;
+            background: var(--ok);
+            transition: width 0.5s ease, background-color 0.5s ease;
+        }
+        .fill.warn { background: var(--warn); }
+        .fill.bad { background: var(--bad); }
+        #status { margin-top: 16px; font-size: 0.8rem; color: var(--muted); }
+        #status.error { color: var(--bad); }
     </style>
 </head>
 <body>
 <h1>Сервер</h1>
 
-<div>CPU: <span id="cpu">-</span></div>
-<div>Память: <span id="mem">-</span></div>
-<div id="disks"></div>
+<div class="grid">
+    <div class="card">
+        <h2>Процессор</h2>
+        <div class="label"><span id="cpu-text">-</span></div>
+        <div class="track"><div class="fill" id="cpu-bar"></div></div>
+    </div>
+
+    <div class="card">
+        <h2>Память</h2>
+        <div class="label"><span id="mem-text">-</span></div>
+        <div class="track"><div class="fill" id="mem-bar"></div></div>
+    </div>
+
+    <div class="card">
+        <h2>Диски</h2>
+        <div id="disks"></div>
+    </div>
+</div>
+
+<div id="status">Загрузка…</div>
 
 <script>
-    async function refresh() {
-        try {
-            const r = await fetch('/api/metrics');
-            const m = await r.json();
-            document.getElementById('cpu').textContent = m.cpu_percent.toFixed(1) + '%';
-            // память и диски заполни по такому же принципу
-            document.getElementById('mem').textContent = 'занято ' +
-                fmtGB(m.mem_used_bytes) + ' из ' + fmtGB(m.mem_total_bytes) + ', свободно ' + fmtGB(m.mem_total_bytes - m.mem_used_bytes);
-            renderDisks(m.disks);
-        } catch (e) {
-            document.getElementById('cpu').textContent = 'нет связи';
-        }
+    function fmtGB(bytes) {
+        return (bytes / 1024 / 1024 / 1024).toFixed(1) + ' ГБ';
     }
 
-    function fmtGB(bytes) {
-        return (bytes / 1024 / 1024 / 1024).toFixed(1) + 'ГБ'
+    // Ставит ширину полоски и цвет по порогам: до 70% зелёный, до 90% жёлтый, выше красный
+    function setBar(el, percent) {
+        const p = Math.max(0, Math.min(100, percent));
+        el.style.width = p + '%';
+        el.classList.toggle('warn', p >= 70 && p < 90);
+        el.classList.toggle('bad', p >= 90);
     }
 
     function renderDisks(disks) {
@@ -40,10 +103,55 @@
         for (const d of disks) {
             if (d.total_bytes === 0) continue;
             const used = d.total_bytes - d.available_bytes;
+            const percent = (used / d.total_bytes) * 100;
 
             const row = document.createElement('div');
-            row.textContent = d.mount + ' занято ' + fmtGB(used) + ' из ' + fmtGB(d.total_bytes) + ', свободно ' + fmtGB(d.available_bytes);
+            row.className = 'row';
+
+            const label = document.createElement('div');
+            label.className = 'label';
+            const name = document.createElement('span');
+            name.textContent = d.mount;
+            const info = document.createElement('span');
+            info.className = 'muted';
+            info.textContent = fmtGB(used) + ' из ' + fmtGB(d.total_bytes) +
+                ', свободно ' + fmtGB(d.available_bytes);
+            label.append(name, info);
+
+            const track = document.createElement('div');
+            track.className = 'track';
+            const fill = document.createElement('div');
+            fill.className = 'fill';
+            track.appendChild(fill);
+
+            row.append(label, track);
+            setBar(fill, percent);      // до вставки на страницу, чтобы полоска не анимировалась с нуля
             box.appendChild(row);
+        }
+    }
+
+    async function refresh() {
+        const status = document.getElementById('status');
+        try {
+            const r = await fetch('/api/metrics');
+            const m = await r.json();
+
+            document.getElementById('cpu-text').textContent = m.cpu_percent.toFixed(1) + '%';
+            setBar(document.getElementById('cpu-bar'), m.cpu_percent);
+
+            const free = m.mem_total_bytes - m.mem_used_bytes;
+            document.getElementById('mem-text').textContent =
+                'занято ' + fmtGB(m.mem_used_bytes) + ' из ' + fmtGB(m.mem_total_bytes) +
+                ', свободно ' + fmtGB(free);
+            setBar(document.getElementById('mem-bar'), (m.mem_used_bytes / m.mem_total_bytes) * 100);
+
+            renderDisks(m.disks);
+
+            status.className = '';
+            status.textContent = 'Обновлено в ' + new Date().toLocaleTimeString('ru-RU');
+        } catch (e) {
+            status.className = 'error';
+            status.textContent = 'Нет связи с сервисом, данные устарели';
         }
     }
 
