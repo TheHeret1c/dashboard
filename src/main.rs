@@ -16,6 +16,7 @@ struct DiskInfo {
 struct Metrics {
     mem_total_bytes: u64,
     mem_used_bytes: u64,
+    cpu_percent: f32,
     disks: Vec<DiskInfo>,
 }
 
@@ -37,10 +38,11 @@ async fn main() {
     let for_task = shared.clone();
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(Duration::from_secs(3));
+        let mut sys = System::new();
         loop {
             ticker.tick().await;
-            let mut sys = System::new();
-            sys.refresh_all();
+            sys.refresh_memory();
+            sys.refresh_cpu_usage();
 
             let disks = Disks::new_with_refreshed_list();
             let disks_info: Vec<DiskInfo> = disks
@@ -55,6 +57,7 @@ async fn main() {
             let fresh = Metrics {
                 mem_total_bytes: sys.total_memory(),
                 mem_used_bytes: sys.used_memory(),
+                cpu_percent: sys.global_cpu_usage(),
                 disks: disks_info,
             };
 
