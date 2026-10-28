@@ -1,0 +1,12 @@
+name: build
+on: [push]
+
+jobs:
+  build:
+    runs-on: docker
+    steps:
+      - uses: actions/checkout@v4
+      - name: Установить Docker CLI
+        run: apt-get update && apt-get install -y docker.io
+      - name: Собрать образ
+        run: docker build -t dashboard:ci .
