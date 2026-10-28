@@ -1,7 +1,7 @@
 use axum::{routing::get, Router};
 
 async fn health() -> &'static str {
-    "OK"
+    "ok response"
 }
 
 #[tokio::main]
