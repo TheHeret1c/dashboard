@@ -162,6 +162,26 @@ async fn main() {
         }
     });
 
+    let for_cleanup = shared.clone();
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(Duration::from_secs(3600));
+        loop {
+            ticker.tick().await;
+
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64;
+            let cutoff = now - 7 * 24 * 60 * 60;
+
+            let conn = for_cleanup.db.lock().unwrap();
+            let deleted = conn
+                .execute("DELETE FROM metrics WHERE ts < ?1", params![cutoff])
+                .unwrap();
+            println!("очистка: удалено {deleted} строк");
+        }
+    });
+
     let app = Router::new()
         .route("/health", get(health))
         .route("/api/metrics", get(metrics))
