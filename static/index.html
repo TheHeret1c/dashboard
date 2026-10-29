@@ -57,6 +57,39 @@
         .fill.bad { background: var(--bad); }
         #status { margin-top: 16px; font-size: 0.8rem; color: var(--muted); }
         #status.error { color: var(--bad); }
+
+        .periods { display: flex; gap: 8px; margin-bottom: 12px; }
+        .periods button {
+            background: var(--track); color: var(--text); border: 0;
+            border-radius: 6px; padding: 4px 12px; cursor: pointer;
+        }
+        .periods button.active { background: var(--ok); color: #0f1419; }
+        .chart { width: 100%; height: 140px; display: block; }
+        .chart .grid { stroke: var(--track); stroke-width: 1; }
+        .chart .line {
+            fill: none; stroke: var(--ok); stroke-width: 2;
+            vector-effect: non-scaling-stroke;
+        }
+        .chart-wrap { display: flex; gap: 8px; }
+        .y-axis {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 140px;
+            min-width: 36px;
+            text-align: right;
+            font-size: 0.75rem;
+            line-height: 1;
+            color: var(--muted);
+        }
+        .chart-wrap .chart { flex: 1; min-width: 0; }
+        .axis {
+            display: flex;
+            justify-content: space-between;
+            margin: 4px 0 0 44px;   /* 44px = ширина колонки подписей + отступ */
+            font-size: 0.75rem;
+            color: var(--muted);
+        }
     </style>
 </head>
 <body>
@@ -78,6 +111,31 @@
     <div class="card">
         <h2>Диски</h2>
         <div id="disks"></div>
+    </div>
+    <div class="card">
+        <h2>История</h2>
+        <div class="periods" id="periods">
+            <button data-min="15">15 мин</button>
+            <button data-min="60" class="active">1 ч</button>
+            <button data-min="360">6 ч</button>
+            <button data-min="1440">24 ч</button>
+        </div>
+
+        <div class="muted">Процессор</div>
+        <div class="chart-wrap">
+            <div class="y-axis"><span>100%</span><span>50%</span><span>0%</span></div>
+            <svg class="chart" id="cpu-chart" viewBox="0 0 600 140" preserveAspectRatio="none"></svg>
+        </div>
+
+        <div class="muted" style="margin-top: 12px">Память</div>
+        <div class="chart-wrap">
+            <div class="y-axis"><span>100%</span><span>50%</span><span>0%</span></div>
+            <svg class="chart" id="mem-chart" viewBox="0 0 600 140" preserveAspectRatio="none"></svg>
+        </div>
+
+        <div class="axis">
+            <span id="t-start"></span><span id="t-mid"></span><span id="t-end"></span>
+        </div>
     </div>
 </div>
 
@@ -154,6 +212,80 @@
             status.textContent = 'Нет связи с сервисом, данные устарели';
         }
     }
+
+    let periodMin = 60;
+
+    function drawChart(svg, points) {
+        svg.replaceChildren();
+        const NS = 'http://www.w3.org/2000/svg';
+
+        // линии сетки на 0, 50 и 100%
+        for (const v of [0, 50, 100]) {
+            const y = 140 - (v / 100) * 140;
+            const g = document.createElementNS(NS, 'line');
+            g.setAttribute('x1', 0);
+            g.setAttribute('x2', 600);
+            g.setAttribute('y1', y);
+            g.setAttribute('y2', y);
+            g.setAttribute('class', 'grid');
+            svg.appendChild(g);
+        }
+        if (points.length < 2) return;
+
+        const t0 = points[0].ts;
+        const t1 = points[points.length - 1].ts;
+        const span = Math.max(1, t1 - t0);
+
+        const coords = points.map(p => {
+            const x = ((p.ts - t0) / span) * 600;
+            const v = Math.max(0, Math.min(100, p.v));
+            const y = 140 - (v / 100) * 140;
+            return x.toFixed(1) + ',' + y.toFixed(1);
+        }).join(' ');
+
+        const line = document.createElementNS(NS, 'polyline');
+        line.setAttribute('points', coords);
+        line.setAttribute('class', 'line');
+        svg.appendChild(line);
+    }
+
+    async function loadHistory() {
+        try {
+            const r = await fetch('/api/history?minutes=' + periodMin);
+            const h = await r.json();
+
+            drawChart(document.getElementById('cpu-chart'),
+                h.map(p => ({ ts: p.ts, v: p.cpu })));
+            drawChart(document.getElementById('mem-chart'),
+                h.map(p => ({ ts: p.ts, v: (p.mem_used / p.mem_total) * 100 })));
+
+            if (h.length) {
+                const fmt = s => new Date(s * 1000)
+                    .toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                const first = h[0].ts;
+                const last = h[h.length - 1].ts;
+                document.getElementById('t-start').textContent = fmt(first);
+                document.getElementById('t-mid').textContent = fmt((first + last) / 2);
+                document.getElementById('t-end').textContent = fmt(last);
+            }
+        } catch (e) {
+            // сообщение о потере связи уже показывает refresh()
+        }
+    }
+
+    document.getElementById('periods').addEventListener('click', e => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        periodMin = Number(b.dataset.min);
+        for (const x of document.querySelectorAll('#periods button')) {
+            x.classList.toggle('active', x === b);
+        }
+        loadHistory();
+    });
+
+    loadHistory();
+    setInterval(loadHistory, 15000);
+
 
     refresh();
     setInterval(refresh, 3000);
