@@ -7,6 +7,7 @@ use axum::response::Html;
 use rusqlite::Connection;
 use std::time::{SystemTime, UNIX_EPOCH};
 use rusqlite::params;
+use std::path::Path;
 
 
 #[derive(Serialize, Clone)]
@@ -129,6 +130,10 @@ async fn main() {
             let disks = Disks::new_with_refreshed_list();
             let disks_info: Vec<DiskInfo> = disks
                 .iter()
+                .filter(|d| {
+                    let mp = d.mount_point();
+                    !mp.starts_with("/etc") && mp != Path::new("/data")
+                })
                 .map(|d| DiskInfo {
                     mount: d.mount_point().to_string_lossy().to_string(),
                     total_bytes: d.total_space(),
